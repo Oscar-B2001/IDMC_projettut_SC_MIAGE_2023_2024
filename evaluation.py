@@ -1,6 +1,7 @@
 ###### Méthode d'évaluation  ######
 import pandas as pd
 import numpy as np
+from math import sqrt
 
 from sklearn.decomposition import PCA
 from sklearn.manifold import MDS
@@ -130,18 +131,60 @@ def mesure_larges(df_syn, df_rel):
     dist = {'MSE' : mse(X_rel, X_syn), 'DTW' : dtw(X_rel, X_syn), 'KL' : kl_div(X_rel, X_syn)}
     return dist
 
-def Mont_carlo():
-    pass
+################# Mesure étroite / IO, EO #################################
+
+def Mont_carlo(int_1, int_2, n=5000):
+    """
+    Calcule la proba qu'un point appartenant à l'intervalle 1 appartiennent a l'intervalle 2
+    """
+    #génération de 1000 point dans l'intervalle de confiance 
+    #Notez que la distribution au sein de l'intervale est continue
+    l = np.random.randint(low=int_1[0], high=int_1[1], size=n)
+    P = np.sum((l >= int_2[0]) & (l <= int_2[1]))
+    return P/n
+
 
 def IO(df_syn, df_rel):
-    for i in np.unique(df_rel['action']):
-        syn_it = df_syn[df_syn['action'] == i]
-        rel_it = df_rel[df_rel['action'] == i]
-        y_syn = df_syn['time']
-        y_rel = df_rel['time']
-        X_syn = df_syn.drop(['time'], axis=1)
-        X_rel = df_rel.drop(['time'], axis=1)
+    """
+    Calcule le % de cheuvauchement d'intervalle de confiance entre données réelles et données synthétiques
+
+    Paramètres :
+    df_syn : data frame -> jeu de donnée synthétique
+    df_rel : data frame -> jeu de donnée réelle
+
+    Retourne :
+    I/p : int -> probabilitée de cheuvauchement d'intervale calculer avec une regression linaire et MontCarlos    
+    """
+    I = 0 #résultat final
+    p = 0 #compteur de tours
+    for k in np.unique(df_rel['action']):
+        p +=1
+
+        #def de X et y en fonction de l'action regarder
+        syn_it = df_syn[df_syn['action'] == k]
+        rel_it = df_rel[df_rel['action'] == k]
+        y_syn = syn_it['time']
+        y_rel = rel_it['time']
+        X_syn = syn_it.drop(['time'], axis=1)
+        X_rel = rel_it.drop(['time'], axis=1)
+        
+        #recupération des coéfficents directeur du verbe pour une action k en fonction du temps
         reg_syn = LinearRegression().fit(X_syn, y_syn)
         reg_rel = LinearRegression().fit(X_rel, y_rel)
+        syn_coef = reg_syn.coef_[0]
+        rel_coef = reg_rel.coef_[0]
 
-    pass
+        #intervalle de confiance a 95%
+        int_syn = [syn_coef - 1.96* sqrt(np.var(X_syn)/len(X_syn)), syn_coef + 1.96* sqrt(np.var(X_syn)/len(X_syn))]
+        int_rel = [rel_coef - 1.96* sqrt(np.var(X_rel)/len(X_rel)), rel_coef + 1.96* sqrt(np.var(X_rel)/len(X_rel))]
+
+        #Mont Carlo pour supperposition (non nécéssaire lol)
+        Ik = 1/2 * (Mont_carlo(int_syn, int_rel) + Mont_carlo(int_rel, int_syn))
+
+    I += Ik
+    return I/p
+
+
+def EO(df_syn, df_rel):
+    #oula ca vas me prendre 3ans
+    pass 
