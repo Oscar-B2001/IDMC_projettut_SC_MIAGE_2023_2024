@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.manifold import MDS
-
+from sklearn.manifold import TSNE
 
 #df_merged = df_sync.append(def_rel, ignore_index=True)
 #df_merged.sort_values(by=['temps])
@@ -58,3 +58,10 @@ def mds_temp(df_merged, m, n):
         X_mds = X_mds.append(mymds, ignore_index=True)
     X_mds['time'] = T
     return X_mds
+
+
+def t_sne(df_merged, perplexity): 
+    df_merged.drop(['time'], axis=1, inplace=True)
+    tsne = TSNE(n_components=2, perplexity=perplexity).fit(df_merged)
+    return tsne
+
