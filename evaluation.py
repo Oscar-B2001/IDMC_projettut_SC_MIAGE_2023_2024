@@ -1,12 +1,16 @@
 ###### Méthode d'évaluation  ######
 import pandas as pd
 import numpy as np
+
 from sklearn.decomposition import PCA
 from sklearn.manifold import MDS
 from sklearn.manifold import TSNE
+from sklearn.linear_model import LinearRegression
 
 from scipy.spatial.distance import euclidean
 from scipy.signal import find_peaks
+from scipy.special import kl_div
+
 
 #df_merged = df_syn.append(def_rel, ignore_index=True)
 #df_merged.sort_values(by=['temps])
@@ -70,12 +74,12 @@ def t_sne(df_merged, perplexity):
 
 ################# MSE / DTW ##########################
 
-def MSE(s_1, s_2):
+def mse(s_1, s_2):
     """
-    Cette fonction évalue la MSE entre deux série
+    Cette fonction évalue la MSE entre deux série temoprelle de dimension >=1
 
     Paramètres:
-    s_1, s_2  --> list/numpy/tuple, deux série temporel
+    s_1, s_2  --> list/numpy/tuple, deux série temporelles de dimensions >=1
 
     Return :
     int, distance euclédienne carrée entre deux série temporel 
@@ -86,12 +90,12 @@ def MSE(s_1, s_2):
         return np.mean(np.square(np.subtract(s_1, s_2)))
 
 
-def DTW(s_1, s_2):
+def dtw(s_1, s_2):
     """
-    Calcule la distance DTW entre deux séries temporelles s_1 et s_2.
+    Calcule la distance DTW entre deux séries temporelles de dimension >=1 s_1 et s_2.
 
     Paramètres:
-    s_1, s_2  --> list/numpy/tuple, deux série temporel
+    s_1, s_2  --> list/numpy/tuple, deux série temporelles de dimension >=1
 
     Return :
     dtw_matrix[len_s1, len_s2] --> int, distance DTW entre s_1 et s_2
@@ -108,10 +112,36 @@ def DTW(s_1, s_2):
     # Remplir la matrice de coût DTW
     for i in range(1, len_s1 + 1):
         for j in range(1, len_s2 + 1):
-            cost = abs(s_1[i - 1] - s_2[j - 1])  # Calcul du coût local
+            cost = euclidean(s_1[i - 1], s_2[j - 1])  # Calcul du coût local
             dtw_matrix[i, j] = cost + min(dtw_matrix[i - 1, j],    # Coût de déplacement vers le haut
                                            dtw_matrix[i, j - 1],    # Coût de déplacement vers la gauche
                                            dtw_matrix[i - 1, j - 1])  # Coût de déplacement en diagonale
 
     # Retourner la distance DTW entre les deux séries temporelles
     return dtw_matrix[len_s1, len_s2]
+
+
+def mesure_larges(df_syn, df_rel):
+    """
+    retourn dic des distances + kullback leibler
+    """
+    X_syn = df_syn.drop(['time'], axis=1)
+    X_rel = df_rel.drop(['time'], axis=1)
+    dist = {'MSE' : mse(X_rel, X_syn), 'DTW' : dtw(X_rel, X_syn), 'KL' : kl_div(X_rel, X_syn)}
+    return dist
+
+def Mont_carlo():
+    pass
+
+def IO(df_syn, df_rel):
+    for i in np.unique(df_rel['action']):
+        syn_it = df_syn[df_syn['action'] == i]
+        rel_it = df_rel[df_rel['action'] == i]
+        y_syn = df_syn['time']
+        y_rel = df_rel['time']
+        X_syn = df_syn.drop(['time'], axis=1)
+        X_rel = df_rel.drop(['time'], axis=1)
+        reg_syn = LinearRegression().fit(X_syn, y_syn)
+        reg_rel = LinearRegression().fit(X_rel, y_rel)
+
+    pass
