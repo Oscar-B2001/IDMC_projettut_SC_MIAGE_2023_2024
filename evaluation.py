@@ -11,6 +11,9 @@ from sklearn.linear_model import LinearRegression
 from scipy.spatial.distance import euclidean
 from scipy.signal import find_peaks
 from scipy.special import kl_div
+from scipy.stats import f
+from scipy.stats import multivariate_t
+
 
 
 #df_merged = df_syn.append(def_rel, ignore_index=True)
@@ -133,27 +136,29 @@ def mesure_larges(df_syn, df_rel):
 
 ################# Mesure étroite / IO, EO #################################
 
-def Mont_carlo(int_1, int_2, n=5000):
+def Mont_carlo_io(loc, scale, int_1, int_2, n=5000):
     """
-    Calcule la proba qu'un point appartenant à l'intervalle 1 appartiennent a l'intervalle 2
+    Calcule la proba qu'un point appartenant à l'intervalle 1 appartiennent a l'intervalle 2 en suivant une loi normal
     """
-    #génération de 1000 point dans l'intervalle de confiance 
-    #Notez que la distribution au sein de l'intervale est continue
-    l = np.random.randint(low=int_1[0], high=int_1[1], size=n)
+    l=[]
+    while len(l)<n:
+        tirage = np.random.normal(loc, scale)
+        if tirage >= int_1[0] & tirage<=int_1[1]:
+            l.append(tirage)
     P = np.sum((l >= int_2[0]) & (l <= int_2[1]))
     return P/n
 
 
 def IO(df_syn, df_rel):
     """
-    Calcule le % de cheuvauchement d'intervalle de confiance entre données réelles et données synthétiques
+    Calcule le % de chevauchement d'intervalle de confiance entre données réelles et données synthétiques
 
     Paramètres :
     df_syn : data frame -> jeu de donnée synthétique
     df_rel : data frame -> jeu de donnée réelle
 
     Retourne :
-    I/p : int -> probabilitée de cheuvauchement d'intervale calculer avec une regression linaire et MontCarlos    
+    I/p : int -> probabilitée de chevauchement d'intervale calculer avec une regression linaire et MontCarlos    
     """
     I = 0 #résultat final
     p = 0 #compteur de tours
@@ -179,12 +184,82 @@ def IO(df_syn, df_rel):
         int_rel = [rel_coef - 1.96* sqrt(np.var(X_rel)/len(X_rel)), rel_coef + 1.96* sqrt(np.var(X_rel)/len(X_rel))]
 
         #Mont Carlo pour supperposition (non nécéssaire lol)
-        Ik = 1/2 * (Mont_carlo(int_syn, int_rel) + Mont_carlo(int_rel, int_syn))
+        Ik = 1/2 * (Mont_carlo_io(syn_coef, sqrt(np.var(X_syn)), int_syn, int_rel), 
+                    Mont_carlo_io(rel_coef, sqrt(np.var(X_rel)), int_rel, int_syn))
 
     I += Ik
     return I/p
 
 
 def EO(df_syn, df_rel):
-    #oula ca vas me prendre 3ans
-    pass 
+    """
+    Calcule le % de chevauchement d'éllipsoïdes entre données réelles et données synthétiques
+
+    Paramètres :
+    df_syn : data frame -> jeu de donnée synthétique
+    df_rel : data frame -> jeu de donnée réelle
+
+    Retourne :
+    1/2 * (p_1+p_2) : int -> probabilitée de chevauchement des ellispoïdes
+    """
+    Y_syn = df_syn['time']
+    Y_rel = df_rel['time']
+    X_syn = df_syn.drop(['time'], axis=1)
+    X_rel = df_rel.drop(['time'], axis=1)
+    
+    def elipsoides(X, Y) :
+        """
+        Cette fonction crée l'élipsoïde correspondante aux données X et Y
+
+        Paramètres: 
+        X : array -> objet + verbe
+        Y : array -> time stamp
+
+        Retourne : 
+        d : dict -> les paramètres de Bétat
+        """
+        #recupération des coéfficents directeur du verbe  en fonction du temps
+        beta_hat = np.linalg.inv(X.T @ X) @ X.T @ Y #coef de la regression linéaire
+        residuals = Y - X @ beta_hat
+        p = X_syn.shape[1]
+        n = X_syn.shape[0]
+        sigma_hat_squared = np.sum(residuals ** 2) / (n - p)
+
+        #Création des élipsoïdes
+        alpha = 0.05
+        f_critical = f.ppf(1 - alpha, p, n - p) #le quantil d'ordre 1-alpha d'une Fisher de paramètre (p, n-p)
+        inf = beta_hat - sqrt(f_critical * p * sigma_hat_squared / np.diag(X.T @ X)) #potentiellement just (X.T @ X) en non np.diag(X.T @ X)
+        sup = beta_hat + sqrt(f_critical * p * sigma_hat_squared / np.diag(X.T @ X))
+
+        d = {'X' : X, 'Y' : Y, 'intervale' : [inf, sup], 'beta_hat' : beta_hat, 'sigma' : sigma_hat_squared, 'p' : p, 'n' : n}
+        return d
+    
+    d_rel = elipsoides(X_rel, Y_rel)
+    d_syn = elipsoides(X_syn, Y_syn)
+
+    def Mont_carlo(X, Y, beta_hat, sigma_squared, degrees_of_freedom, num_samples=5000):
+        """
+        Génère num_samples données en fonction d'une loi de student multivariée (ref rapport écrit)
+        """
+        inv_XTX = np.invert(X.T @ X)
+        cov_matrix = sigma_squared * inv_XTX
+        
+        #création de la distribution 
+        t_dist = multivariate_t(loc=beta_hat, shape=cov_matrix, df=degrees_of_freedom)
+
+        tirage = t_dist.rvs(size=num_samples)
+        return tirage
+
+    #nous effectuons des tirages qui suivent la loi à postérieurie de X_rel et X_syn 
+    num_samples = 5000
+    tirage_rel = Mont_carlo(X=d_rel['X'], Y=d_rel['Y'], beta_hat=d_rel['beta_hat'], sigma_squared=d_rel['sigma'], degrees_of_freedom=d_rel['p'] - d_rel['n'], num_samples=num_samples)
+    tirage_syn = Mont_carlo(X=d_syn['X'], Y=d_syn['Y'], beta_hat=d_syn['beta_hat'], sigma_squared=d_syn['sigma'], degrees_of_freedom=d_syn['p'] - d_rel['n'], num_samples=num_samples)
+    
+    #Cacule du % de recouvrement dans chaque cas
+    p_1 = np.sum(((tirage_rel[:,0] >= d_syn['intervale'][0][0]) & (tirage_rel[:,0] >= d_syn['intervale'][1][0])) & ((tirage_rel[:,0] >= d_syn['intervale'][0][1]) & (tirage_rel[:,0] >= d_syn['intervale'][1][1])))
+    p_1 = p_1 / num_samples
+    p_2 = np.sum(((tirage_syn[:,0] >= d_rel['intervale'][0][0]) & (tirage_syn[:,0] >= d_rel['intervale'][1][0])) & ((tirage_syn[:,0] >= d_rel['intervale'][0][1]) & (tirage_syn[:,0] >= d_rel['intervale'][1][1])))     
+    p_2 = p_2 / num_samples
+
+    #moyenne les deux probas
+    return 1/2 * (p_1+p_2)
