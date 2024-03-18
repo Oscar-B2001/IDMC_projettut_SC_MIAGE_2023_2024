@@ -218,7 +218,7 @@ def EO(df_syn, df_rel):
         Retourne : 
         d : dict -> les paramètres de Bétat
         """
-        #recupération des coéfficents directeur du verbe  en fonction du temps
+        #recupération des coéfficents directeur du verbe + objet en fonction du temps
         beta_hat = np.linalg.inv(X.T @ X) @ X.T @ Y #coef de la regression linéaire
         residuals = Y - X @ beta_hat
         p = X_syn.shape[1]
