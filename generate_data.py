@@ -2,17 +2,29 @@ import numpy as np
 
 from time_gan_tensorflow.model import TimeGAN
 from time_gan_tensorflow.plots import plot
+from encoding import load_concatenate_json_files
+from encoding import MinMaxScaler
+from encoding import simplify_df
+from encoding import encoding_data
 
 # Generate the data
-N = 5      # number of time series
-L = 100   # length of each time series
-t = np.linspace(0, 1, L).reshape(-1, 1)
-c = np.cos(2 * np.pi * (50 * t - 0.5))
-s = np.sin(2 * np.pi * (100 * t - 0.5))
-x = 5 + 10 * c + 10 * s + 5 * np.random.normal(size=(L, N))
+# Utiliser la fonction pour charger et concaténer les fichiers JSON
+folder_path = 'Données_bruts_projet_tut'
+df = load_concatenate_json_files(folder_path)
 
-# Split the data
-x_train, x_test = x[:int(0.8 * L)], x[int(0.8 * L):]
+# Appel de la fonction pour simplifier les données des actors
+df = simplify_df(df)
+
+real_data = encoding_data(df)
+
+# Déterminer la taille des ensembles d'entraînement et de test
+train_size = int(0.8 * len(real_data))  # 80% pour l'entraînement
+test_size = len(real_data) - train_size  # 20% pour les tests
+
+# Diviser les données en ensembles d'entraînement et de test
+#np.random.shuffle(data_matrix)  # Mélanger les données pour garantir l'ordre aléatoire
+x_train = real_data[:train_size]  # 80% pour l'entraînement
+x_test = real_data[train_size:]   # 20% pour les tests
 
 # Fit the model to the training data
 model = TimeGAN(
@@ -33,10 +45,12 @@ model.fit(
 
 # Reconstruct the test data
 x_hat = model.reconstruct(x=x_test)
-
+print('===========================================')
+print(x_hat)
 # Generate the synthetic data
 x_sim = model.simulate(samples=len(x_test))
-
+print('------------------------------------------')
+print(x_sim)
 # Plot the actual, reconstructed and synthetic data
-fig = plot(actual=x_test, reconstructed=x_hat, synthetic=x_sim)
-fig.write_image('results.png', scale=4, height=900, width=700)
+#fig = plot(actual=x_test, reconstructed=x_hat, synthetic=x_sim)
+#fig.write_image('results.png', scale=4, height=900, width=700)

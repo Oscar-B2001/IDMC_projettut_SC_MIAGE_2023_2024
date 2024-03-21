@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+import numpy as np
 import json
 from sklearn.preprocessing import LabelEncoder
 
@@ -46,50 +47,63 @@ def simplify_df(df):
     
     return df
 
-# Utiliser la fonction pour charger et concaténer les fichiers JSON
+
+# Partie encocodage de données 
 folder_path = 'Données_bruts_projet_tut'
 df = load_concatenate_json_files(folder_path)
 
 # Appel de la fonction pour simplifier les données des actors
 df = simplify_df(df)
 
-# Partie encocodage de données 
+def encoding_data(df):
+    # Apply integer encoding to 'Verb' and 'Object' columns
+    label_encoder_actor = LabelEncoder()
+    label_encoder_verb = LabelEncoder()
+    label_encoder_object = LabelEncoder()
+    df['Actor'] = label_encoder_actor.fit_transform(df['Actor'])
+    df['Verb'] = label_encoder_verb.fit_transform(df['Verb'])
+    df['Object'] = label_encoder_object.fit_transform(df['Object'])
+    # Convert the 'Timestamp' column to datetime objects
+    df['Timestamp'] = pd.to_datetime(df['Timestamp'])
 
-# Apply integer encoding to 'Verb' and 'Object' columns
-label_encoder_actor = LabelEncoder()
-label_encoder_verb = LabelEncoder()
-label_encoder_object = LabelEncoder()
-df['Actor'] = label_encoder_actor.fit_transform(df['Actor'])
-df['Verb'] = label_encoder_verb.fit_transform(df['Verb'])
-df['Object'] = label_encoder_object.fit_transform(df['Object'])
+    # Convert datetime timestamps to seconds since the epoch using .timestamp()
+    df['Timestamp'] = df['Timestamp'].apply(lambda x: x.timestamp())
 
-# Convert the 'Timestamp' column to datetime objects
-df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+    # Find the earliest timestamp in seconds since the epoch
+    min_timestamp_seconds = df['Timestamp'].min()
 
-# Convert datetime timestamps to seconds since the epoch using .timestamp()
-df['Timestamp'] = df['Timestamp'].apply(lambda x: x.timestamp())
+    # Calculate the difference in seconds from the first event
+    df['Timestamp'] = df['Timestamp'] - min_timestamp_seconds
 
-# Find the earliest timestamp in seconds since the epoch
-min_timestamp_seconds = df['Timestamp'].min()
+    # Sort the DataFrame by the 'Timestamp' column
+    df_sorted = df.sort_values(by='Timestamp')
 
-# Calculate the difference in seconds from the first event
-df['Timestamp'] = df['Timestamp'] - min_timestamp_seconds
+    # Reset the index of the sorted DataFrame to get a new index that represents the chronological order
+    df_sorted = df_sorted.reset_index(drop=True)
 
-# Sort the DataFrame by the 'Timestamp' column
-df_sorted = df.sort_values(by='Timestamp')
+    # Add the 'Chronological_Order' column at the first position (index 0)
+    #df_sorted.insert(0, 'Chronological_Order', df_sorted.index + 1)  # Adding 1 so that the order starts from 1 instead of 0
 
-# Reset the index of the sorted DataFrame to get a new index that represents the chronological order
-df_sorted = df_sorted.reset_index(drop=True)
+    df = df_sorted
 
-# Add the 'Chronological_Order' column at the first position (index 0)
-df_sorted.insert(0, 'Chronological_Order', df_sorted.index + 1)  # Adding 1 so that the order starts from 1 instead of 0
+    # The dataframe is now preprocessed and ready for synthetic data generation
+    df_preprocessed_shape = df.shape
+    df_preprocessed_head = df.head()
 
-df = df_sorted
+    df_preprocessed_shape, df_preprocessed_head
 
-# The dataframe is now preprocessed and ready for synthetic data generation
-df_preprocessed_shape = df.shape
-df_preprocessed_head = df.head()
+    return df.values
 
-df_preprocessed_shape, df_preprocessed_head
-
-df
+def MinMaxScaler(data):
+  """Min Max normalizer.
+  
+  Args:
+    - data: original data
+  
+  Returns:
+    - norm_data: normalized data
+  """
+  numerator = data - np.min(data, 0)
+  denominator = np.max(data, 0) - np.min(data, 0)
+  norm_data = numerator / (denominator + 1e-7)
+  return norm_data
